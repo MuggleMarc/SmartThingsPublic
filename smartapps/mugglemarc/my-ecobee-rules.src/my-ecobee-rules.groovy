@@ -37,9 +37,6 @@ preferences {
     	input "sendPush", "bool", required: false, defaultValue: false, 
         	title: "Send Push Notifications?"
     }
-    section("Use these people to set Home/Away status") {
-    	input "people", "capability.presenceSensor", multiple:true
-    }
 }
 
 def installed() {
@@ -53,62 +50,28 @@ def updated() {
 
 def initialize() {
     subscribe(button, "button.pushed", buttonHandler)
-    subscribe(people, "presence", presenceHandler)
-    atomicState.away = everyoneIsAway()
+    subscribe(location, "routineExecuted", routineChanged)
 }
 
-def presenceHandler(evt) {
-	log.debug "presenceHandler() - $evt - $evt.name: $evt.value"
-	def currentAway = everyoneIsAway()
-    def delay = 5
-    if (currentAway!=atomicState.away) {
-    	log.debug "presenceHandler() - Current state appears to be $evt.value. Waiting $delay mins to be sure."
-    	runIn(delay * 60, "processAwayState")
-    }
-}
-
-def processAwayState() {
-	log.debug "processAwayState() - Now that we've waited a bit, let's verify the away state."
-    def currentAway = everyoneIsAway()
-	if (currentAway && !atomicState.away) {
-        log.debug "processAwayState() - Still showing as away."
-    	def message = "Setting thermostat to Away."
+def routineChanged(evt) {
+	def routine = evt.displayName
+	log.debug "routineChanged() - $routine executed."
+       
+    if (routine=="Goodbye!") {
+        def message = "Everyone is gone. Setting thermostat to Away."
         log.info message
         if (sendPush) {
          	sendPush(message)
         }
-        atomicState.away = true
         therm.setThermostatProgram("Away")
-    } else if (!currentAway && atomicState.away) {
-    	log.debug "processAwayState() - Still showing as present."
-    	def message = "Setting thermostat to resume program."
+    } else if (routine=="I'm Back!") {
+    	def message = "Someone is home. Setting thermostat to Resume Program."
         log.info message
         if (sendPush) {
          	sendPush(message)
         }
-        atomicState.away = false
         therm.resumeProgram()
-    } else {
-    	log.debug "processAwayState() - Now showing ${currentAway?'not':''} present. Not doing anything."
     }
-}
-
-// returns true if all configured sensors are not present,
-// false otherwise.
-private everyoneIsAway() {
-    def result = true
-    // iterate over our people variable that we defined
-    // in the preferences method
-    for (person in people) {
-   		if (person.currentPresence=="present") {
-            // someone is present, so set our our result
-            // variable to false and terminate the loop.
-            result = false
-            break
-        }
-    }
-    log.debug "everyoneIsAway() - $result"
-    return result
 }
 
 def buttonHandler(evt) {
@@ -130,7 +93,7 @@ def buttonHandler(evt) {
 def thermResume(evt) {
 	log.debug "thermResume() called: $evt"
     if (sendPush) {
-    	sendPush("Resuming normal thermostat program.")
+    	sendPush("Setting thermostat to Resume Program.")
     }
     
     therm.resumeProgram()
